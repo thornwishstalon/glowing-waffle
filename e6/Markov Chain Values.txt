@@ -1,0 +1,13 @@
+		Sunny	Cloudy	Rain
+	Sunny	0.7	0.2	0.1
+A = 	Cloudy	0.2	0.5	0.3
+	Rain 	0.1	0.5	0.4
+
+		Sunny	Cloudy	Rain
+	Sunny	0.3	0.4	0.3
+B = 	Cloudy	0.5	0.2	0.3
+	Rain 	0.6	0.2	0.2
+
+
+
+O = Rain,Cloudy,Sunny,Cloudy,Rain,Sunny,Cloudy,Rain,Sunny,Rain,Sunny,Rain,Cloudy,Rain,Cloudy,Rain,Sunny,Sunny,Rain,Sunny,Rain,Cloudy
