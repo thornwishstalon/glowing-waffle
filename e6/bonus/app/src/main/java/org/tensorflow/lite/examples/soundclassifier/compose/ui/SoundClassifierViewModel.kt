@@ -18,18 +18,24 @@ package org.tensorflow.lite.examples.soundclassifier.compose.ui
 
 import android.annotation.SuppressLint
 import android.app.Application
-import android.media.AudioRecord
-import android.os.Handler
 import android.os.HandlerThread
-import android.util.Log
-import androidx.core.os.HandlerCompat
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
+import be.tarsos.dsp.AudioDispatcher
+import be.tarsos.dsp.io.android.AndroidAudioInputStream
+import be.tarsos.dsp.mfcc.MFCC
+import org.tensorflow.lite.examples.soundclassifier.compose.ml.WakeWordStopLite
+import org.tensorflow.lite.examples.soundclassifier.compose.audio.AudioRecordResult
+import org.tensorflow.lite.examples.soundclassifier.compose.audio.initAudioRecord
+import be.tarsos.dsp.AudioEvent
+
+import be.tarsos.dsp.AudioProcessor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.tensorflow.lite.support.label.Category
-import org.tensorflow.lite.task.audio.classifier.AudioClassifier
 
-const val DefaultClassificationInterval = 500L
+import org.tensorflow.lite.DataType
+import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+
 
 @SuppressLint("StaticFieldLeak")
 class SoundClassifierViewModel(application: Application) : AndroidViewModel(application) {
@@ -38,94 +44,83 @@ class SoundClassifierViewModel(application: Application) : AndroidViewModel(appl
   val classifierEnabled = _classifierEnabled.asStateFlow()
 
   // How often should classification run in milliseconds
-  private val _classificationInterval = MutableStateFlow(DefaultClassificationInterval)
-  val classificationInterval = _classificationInterval.asStateFlow()
 
-  // As a result of sound classification, this value emits map of probabilities
-  private val _probabilities = MutableStateFlow<List<Category>>(emptyList())
-  val probabilities = _probabilities.asStateFlow()
-
-  private var handler: Handler // background thread handler to run classification
-  private var audioClassifier: AudioClassifier? = null
-  private var audioRecord: AudioRecord? = null
+  private var dispatcher: AudioDispatcher? = null
+  private var tfModel: WakeWordStopLite? = null
+  private var audioRecord: AudioRecordResult? = null
 
   init {
     // Create a handler to run classification in a background thread
     val handlerThread = HandlerThread("backgroundThread")
     handlerThread.start()
-    handler = HandlerCompat.createAsync(handlerThread.looper)
   }
 
   fun setClassifierEnabled(value: Boolean) {
     _classifierEnabled.value = value
   }
 
-  fun setClassificationInterval(value: Long) {
-    _classificationInterval.value = value
-  }
-
-  fun setProbabilities(value: List<Category>) {
-    _probabilities.value = value
-  }
-
   fun startAudioClassification() {
     // If the audio classifier is initialized and running, do nothing.
-    if (audioClassifier != null) {
+    if (tfModel != null) {
       setClassifierEnabled(true)
       return
     }
 
-    // Initialize the audio classifier
-    val classifier = AudioClassifier.createFromFile(getApplication(), MODEL_FILE)
-    val audioTensor = classifier.createInputTensorAudio()
+    //model
+    val model = WakeWordStopLite.newInstance(getApplication())
 
     // Initialize the audio recorder
-    val record = classifier.createAudioRecord()
-    record.startRecording()
-
-    // Define the classification runnable
-    val run = object : Runnable {
-      override fun run() {
-        val startTime = System.currentTimeMillis()
-
-        // Load the latest audio sample
-        audioTensor.load(record)
-        val output = classifier.classify(audioTensor)
-
-        // Filter out results above a certain threshold, and sort them descendingly
-        val filteredModelOutput = output[0].categories.filter {
-          it.score > MINIMUM_DISPLAY_THRESHOLD
-        }.sortedBy {
-          -it.score
-        }
-        val finishTime = System.currentTimeMillis()
-        Log.d(LOG_TAG, "Latency = ${finishTime - startTime} ms")
-
-        setProbabilities(filteredModelOutput)
-
-        // Rerun the classification after a certain interval
-        handler.postDelayed(this, classificationInterval.value)
-      }
+    val record: AudioRecordResult? = initAudioRecord()
+    if(record==null){
+      throw ExceptionInInitializerError("Dude!")
     }
+    val mInputStream = AndroidAudioInputStream(record.audioRecord, record.format)
+    val mDispatcher = AudioDispatcher(mInputStream, record.bufferSize, record.bufferSize / 2)
 
-    // Start the classification process
-    handler.post(run)
+    val mfcc = MFCC(record.bufferSize,record.audioRecord.sampleRate )
+
+    mDispatcher.addAudioProcessor(mfcc)
+    mDispatcher.addAudioProcessor(object : AudioProcessor {
+      override fun processingFinished() {}
+      override fun process(audioEvent: AudioEvent): Boolean {
+        // Creates inputs for reference.
+        val inputFeature = TensorBuffer.createFixedSize(intArrayOf(1, 16, 16, 1), DataType.FLOAT32)
+        inputFeature.loadArray(mfcc.mfcc)
+
+        // Runs model inference and gets result.
+        val outputs = model.process(inputFeature)
+        val outputFeature0 = outputs.outputFeature0AsTensorBuffer
+        val data=outputFeature0.floatArray
+
+        if(data[0] > 0.5) {
+          Toast.makeText(getApplication(),"STOP",Toast.LENGTH_LONG)
+        }
+
+        return true
+      }
+    })
+    Thread(mDispatcher, "Audio dispatching").start()
+    record.audioRecord.startRecording()
+
 
     // Save the instances we just created for use later
-    audioClassifier = classifier
+    tfModel = model
     audioRecord = record
+    dispatcher = mDispatcher
   }
 
   fun stopAudioClassification() {
-    handler.removeCallbacksAndMessages(null)
-    audioRecord?.stop()
+    audioRecord?.audioRecord?.stop()
     audioRecord = null
-    audioClassifier = null
+    tfModel?.close()
+    tfModel = null
+    dispatcher?.stop()
+    dispatcher = null
+
   }
 
   companion object {
     private const val LOG_TAG = "AudioDemo"
-    private const val MODEL_FILE = "yamnet.tflite"
     private const val MINIMUM_DISPLAY_THRESHOLD: Float = 0.3f
   }
 }

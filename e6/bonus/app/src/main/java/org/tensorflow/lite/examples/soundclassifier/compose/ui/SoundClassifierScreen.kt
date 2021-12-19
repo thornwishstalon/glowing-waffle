@@ -61,8 +61,7 @@ import org.tensorflow.lite.support.label.Category
 @Composable
 fun SoundClassifierScreen(viewModel: SoundClassifierViewModel) {
   val classifierEnabled by viewModel.classifierEnabled.collectAsState()
-  val classificationInterval by viewModel.classificationInterval.collectAsState()
-  val probabilities by viewModel.probabilities.collectAsState()
+
 
   SoundClassifierTheme {
     Surface(color = MaterialTheme.colors.background) {
@@ -81,11 +80,8 @@ fun SoundClassifierScreen(viewModel: SoundClassifierViewModel) {
         }
       ) { innerPadding ->
         SoundClassifierScreen(
-          probabilities = probabilities,
           classifierEnabled = classifierEnabled,
-          interval = classificationInterval,
           onClassifierToggle = viewModel::setClassifierEnabled,
-          onIntervalChanged = viewModel::setClassificationInterval,
           modifier = Modifier.padding(innerPadding),
         )
       }
@@ -95,11 +91,8 @@ fun SoundClassifierScreen(viewModel: SoundClassifierViewModel) {
 
 @Composable
 private fun SoundClassifierScreen(
-  probabilities: List<Category>,
   classifierEnabled: Boolean,
-  interval: Long,
   onClassifierToggle: (Boolean) -> Unit,
-  onIntervalChanged: (Long) -> Unit,
   modifier: Modifier = Modifier,
 ) {
   Column(
@@ -107,34 +100,17 @@ private fun SoundClassifierScreen(
   ) {
     ControlPanel(
       inputEnabled = classifierEnabled,
-      interval = interval,
       onInputChanged = onClassifierToggle,
-      onIntervalChanged = onIntervalChanged,
     )
 
     Divider(modifier = Modifier.padding(vertical = 24.dp))
-
-    if (classifierEnabled) {
-      probabilities.let { itemList ->
-        LazyColumn {
-          itemsIndexed(
-            items = itemList,
-            key = { _, item -> item.label }
-          ) { index, item ->
-            ProbabilityItem(text = item.label, progress = item.score, index = index)
-          }
-        }
-      }
-    }
   }
 }
 
 @Composable
 fun ControlPanel(
   inputEnabled: Boolean,
-  interval: Long,
   onInputChanged: ((Boolean) -> Unit) = {},
-  onIntervalChanged: (Long) -> Unit = {},
 ) {
   Row {
     val labelText = stringResource(id = R.string.label_input)
@@ -147,55 +123,8 @@ fun ControlPanel(
     )
   }
   Spacer(modifier = Modifier.height(12.dp))
-  Row(verticalAlignment = Alignment.CenterVertically) {
-    val labelText = stringResource(id = R.string.label_classification_interval)
-    Text(labelText, style = MaterialTheme.typography.body1)
-    Slider(
-      enabled = inputEnabled,
-      value = interval / 1000f,
-      onValueChange = { onIntervalChanged((it * 1000L).toLong()) },
-      modifier = Modifier
-        .padding(start = 8.dp)
-        .fillMaxWidth(),
-      colors = SliderDefaults.colors(
-        thumbColor = gray800,
-        activeTrackColor = gray800,
-      )
-    )
-  }
 }
 
-@Composable
-fun ProbabilityItem(text: String, progress: Float, index: Int = 0) {
-  val indicatorColor = progressColorPairs[index % 3].second
-  val backgroundColor = progressColorPairs[index % 3].first
-
-  Row(
-    verticalAlignment = Alignment.CenterVertically
-  ) {
-    Text(
-      text,
-      modifier = Modifier.width(92.dp),
-      style = MaterialTheme.typography.body2,
-    )
-    LinearProgressIndicator(
-      progress = progress,
-      modifier = Modifier
-        .height(52.dp)
-        .padding(start = 12.dp, top = 16.dp, end = 16.dp, bottom = 16.dp)
-        .clip(MaterialTheme.shapes.medium)
-        .fillMaxWidth(),
-      color = indicatorColor,
-      backgroundColor = backgroundColor,
-    )
-  }
-}
-
-private val SampleCategories = listOf(
-  Category("Background Noise", 0.8f),
-  Category("Clap", 0.8f),
-  Category("Snap", 0.8f),
-)
 
 @Preview(name = "Day mode, small device", widthDp = 360, heightDp = 640)
 @Preview(
@@ -208,11 +137,8 @@ fun Preview() {
   SoundClassifierTheme {
     Surface(color = MaterialTheme.colors.background) {
       SoundClassifierScreen(
-        probabilities = SampleCategories,
         classifierEnabled = true,
-        interval = 500L,
         onClassifierToggle = {},
-        onIntervalChanged = {},
       )
     }
   }
