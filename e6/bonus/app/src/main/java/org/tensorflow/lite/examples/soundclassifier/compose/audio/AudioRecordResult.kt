@@ -11,7 +11,7 @@ data class AudioRecordResult(val audioRecord: AudioRecord, val format: TarsosDSP
 
 private val RECORDER_CHANNELS = shortArrayOf(AudioFormat.CHANNEL_IN_MONO.toShort(), AudioFormat.CHANNEL_IN_STEREO.toShort())
 private val RECORDER_AUDIO_FORMATS = shortArrayOf(AudioFormat.ENCODING_PCM_16BIT.toShort(), AudioFormat.ENCODING_PCM_8BIT.toShort())
-private val RECORDER_SAMPLE_RATES = intArrayOf(8000, 11025, 22050, 44100)
+private val RECORDER_SAMPLE_RATES = intArrayOf(8000) //, 11025, 22050, 44100
 
 private const val LOG_TAG = "AudioDemo"
 

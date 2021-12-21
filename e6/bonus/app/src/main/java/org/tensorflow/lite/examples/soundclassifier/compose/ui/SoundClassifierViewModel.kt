@@ -18,47 +18,53 @@ package org.tensorflow.lite.examples.soundclassifier.compose.ui
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
+import android.os.Handler
 import android.os.HandlerThread
+import android.util.Log
 import android.widget.Toast
+import androidx.core.os.HandlerCompat
 import androidx.lifecycle.AndroidViewModel
-import be.tarsos.dsp.AudioDispatcher
-import be.tarsos.dsp.io.android.AndroidAudioInputStream
-import be.tarsos.dsp.mfcc.MFCC
 import org.tensorflow.lite.examples.soundclassifier.compose.ml.WakeWordStopLite
-import org.tensorflow.lite.examples.soundclassifier.compose.audio.AudioRecordResult
-import org.tensorflow.lite.examples.soundclassifier.compose.audio.initAudioRecord
-import be.tarsos.dsp.AudioEvent
-
-import be.tarsos.dsp.AudioProcessor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 import org.tensorflow.lite.DataType
+import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.examples.soundclassifier.compose.audio.Decimate
+import org.tensorflow.lite.examples.soundclassifier.compose.audio.MFCC
+
+import org.tensorflow.lite.support.audio.TensorAudio
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 
 
 @SuppressLint("StaticFieldLeak")
 class SoundClassifierViewModel(application: Application) : AndroidViewModel(application) {
+  private val classificationInterval: Long=500L
+
   // Changing this value triggers turning classification on/off
   private val _classifierEnabled = MutableStateFlow(true)
   val classifierEnabled = _classifierEnabled.asStateFlow()
 
   // How often should classification run in milliseconds
-
-  private var dispatcher: AudioDispatcher? = null
   private var tfModel: WakeWordStopLite? = null
-  private var audioRecord: AudioRecordResult? = null
+  private var record: AudioRecord? = null
+  private var handler: Handler
 
   init {
     // Create a handler to run classification in a background thread
     val handlerThread = HandlerThread("backgroundThread")
     handlerThread.start()
+    handler = HandlerCompat.createAsync(handlerThread.looper)
   }
 
   fun setClassifierEnabled(value: Boolean) {
     _classifierEnabled.value = value
   }
 
+  @SuppressLint("MissingPermission")
   fun startAudioClassification() {
     // If the audio classifier is initialized and running, do nothing.
     if (tfModel != null) {
@@ -69,53 +75,88 @@ class SoundClassifierViewModel(application: Application) : AndroidViewModel(appl
     //model
     val model = WakeWordStopLite.newInstance(getApplication())
 
-    // Initialize the audio recorder
-    val record: AudioRecordResult? = initAudioRecord()
-    if(record==null){
-      throw ExceptionInInitializerError("Dude!")
-    }
-    val mInputStream = AndroidAudioInputStream(record.audioRecord, record.format)
-    val mDispatcher = AudioDispatcher(mInputStream, record.bufferSize, record.bufferSize / 2)
+    val bufferSize = AudioRecord.getMinBufferSize(44100, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT)
+    val recorder = AudioRecord(
+      MediaRecorder.AudioSource.MIC, 44100, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_FLOAT, bufferSize
+    )
 
-    val mfcc = MFCC(record.bufferSize,record.audioRecord.sampleRate )
+    recorder.startRecording()
+    val blocksize = (44100 * 0.5).toInt()
+    var buffer = FloatArray(blocksize)
+    val decimate = Decimate(44100,8000)
+    val mfcc = MFCC()
+    mfcc.setSampleRate(8000)
+    mfcc.setN_mfcc(16)
 
-    mDispatcher.addAudioProcessor(mfcc)
-    mDispatcher.addAudioProcessor(object : AudioProcessor {
-      override fun processingFinished() {}
-      override fun process(audioEvent: AudioEvent): Boolean {
+    // Define the classification runnable
+    val run = object : Runnable {
+      override fun run() {
+        val startTime = System.currentTimeMillis()
+
+        recorder.read(buffer, 0, blocksize, AudioRecord.READ_NON_BLOCKING )
+
+        // Load the latest audio sample
+        val signal = decimate.process(buffer)
+        val mfccs = mfcc.process(signal)
+
+        val tensor = TensorAudio.create(
+          TensorAudio.TensorAudioFormat.create(
+            AudioFormat.Builder().setSampleRate(8000)
+              .setChannelMask(1)
+              .setChannelMask(1)
+              .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+              .build()
+          ),
+          256
+        )
+        tensor.load(mfccs)
+
         // Creates inputs for reference.
-        val inputFeature = TensorBuffer.createFixedSize(intArrayOf(1, 16, 16, 1), DataType.FLOAT32)
-        inputFeature.loadArray(mfcc.mfcc)
+        val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(1, 16, 16, 1), DataType.FLOAT32)
+        inputFeature0.loadBuffer(tensor.tensorBuffer.buffer)
+
 
         // Runs model inference and gets result.
-        val outputs = model.process(inputFeature)
+        val outputs = model.process(inputFeature0)
         val outputFeature0 = outputs.outputFeature0AsTensorBuffer
-        val data=outputFeature0.floatArray
+        Log.d(LOG_TAG, "stop confidence: ${outputFeature0.floatArray[0]}")
 
-        if(data[0] > 0.5) {
+        if (outputFeature0.floatArray[0]> 0.5){
           Toast.makeText(getApplication(),"STOP",Toast.LENGTH_LONG)
         }
 
-        return true
-      }
-    })
-    Thread(mDispatcher, "Audio dispatching").start()
-    record.audioRecord.startRecording()
+        val finishTime = System.currentTimeMillis()
+        Log.d(LOG_TAG, "Latency = ${finishTime - startTime} ms")
 
+        // Rerun the classification after a certain interval
+        handler.postDelayed(this, classificationInterval)
+      }
+    }
+
+    // Start the classification process
+    handler.post(run)
 
     // Save the instances we just created for use later
+    record= recorder
     tfModel = model
-    audioRecord = record
-    dispatcher = mDispatcher
+  }
+
+  private fun transposeArray(array: FloatArray): FloatArray {
+    val m: Int = array.size
+    val transposedMatrix = FloatArray(m)
+
+    for (y in 0 until m) {
+      transposedMatrix[y] = array.get(y)
+    }
+    return transposedMatrix
   }
 
   fun stopAudioClassification() {
-    audioRecord?.audioRecord?.stop()
-    audioRecord = null
+    handler.removeCallbacksAndMessages(null)
+    record?.stop()
+    record = null
     tfModel?.close()
     tfModel = null
-    dispatcher?.stop()
-    dispatcher = null
 
   }
 
@@ -124,3 +165,4 @@ class SoundClassifierViewModel(application: Application) : AndroidViewModel(appl
     private const val MINIMUM_DISPLAY_THRESHOLD: Float = 0.3f
   }
 }
+
