@@ -13,7 +13,7 @@ public class MFCC {
     private static int       n_mfcc       		= 40;
     private final static double    fMin                 = 0.0;
     private final static int       n_fft                = 2048;
-    private final static int       hop_length           = 512;
+    private final static int       hop_length           = 256;
     private final static int	   n_mels               = 26;
 
     private static double    sampleRate           = 44100.0;
@@ -35,11 +35,12 @@ public class MFCC {
         return finalshape(mfccResult);
     }
 
+
     //MFCC into 1d
     private float[] finalshape(double[][] mfccSpecTro){
-        float[] finalMfcc = new float[mfccSpecTro[0].length * mfccSpecTro.length];
+        float[] finalMfcc = new float[mfccSpecTro.length * mfccSpecTro.length];
         int k = 0;
-        for (int i = 0; i < mfccSpecTro[0].length; i++){
+        for (int i = 0; i < mfccSpecTro.length; i++){
             for (int j = 0; j < mfccSpecTro.length; j++){
                 finalMfcc[k] = (float) mfccSpecTro[j][i];
                 k = k+1;

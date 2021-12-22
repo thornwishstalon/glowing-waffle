@@ -7,9 +7,10 @@ class Decimate(val oldSampleRate: Int, newSampleRate: Int ) {
     private val decimateFactor = oldSampleRate / newSampleRate
 
 
-    fun process(floatArray: FloatArray): DoubleArray {
+    fun process(floatArray: FloatArray):DoubleArray {
 
         val d = Decimate(toDouble(floatArray) , oldSampleRate, false)
+        //return toFloat(d.decimate(decimateFactor))
         return d.decimate(decimateFactor)
 
     }

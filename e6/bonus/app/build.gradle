@@ -97,12 +97,13 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-metadata:0.3.1'
     implementation 'com.google.firebase:firebase-perf-ktx:19.1.1'
     debugImplementation "androidx.compose.ui:ui-tooling:$compose_version"
-
     implementation 'org.tensorflow:tensorflow-lite-task-audio:0.3.1'
     implementation ('com.github.psambit9791:jdsp:0.8.0') {
         exclude group: 'org.apache.maven.surefire', module: 'common-java'
         exclude group: 'org.apache.maven.surefire', module: 'surefire-api'
     }
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'
