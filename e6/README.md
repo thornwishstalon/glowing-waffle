@@ -10,9 +10,5 @@
 	* I failed to find a usable mfcc feature extraction implementation that yields similar results as the one from python_speech_features
 		* tried a librosa port as well as an implementation packed in tarsos dsp 
 	* retraining the model under these circumstances seemed tedious
-	* probably should have trained a network instead using autoencoders instead, this would have avoided my mfcc issue
- 
-
-	
-
+	* did not expect that...
 
