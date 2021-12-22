@@ -1,0 +1,11 @@
+task downloadSoundClassificationModelFile(type: Download) {
+    src 'https://github.com/ShawnHymel/tflite-speech-recognition/blob/master/wake_word_stop_lite.tflite'
+    dest project.ext.ASSET_DIR + '/wake_word_stop_lite.tflite'
+    overwrite false
+}
+
+tasks.whenTaskAdded { task ->
+    if ((task.name == 'assembleDebug') || (task.name == 'assembleRelease')) {
+        task.dependsOn 'downloadSoundClassificationModelFile'
+    }
+}
